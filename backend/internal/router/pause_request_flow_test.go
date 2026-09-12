@@ -24,7 +24,7 @@ import (
 // 暂停复核全链路集成测试。通过真实 Gin 引擎和真实 PostgreSQL 运行，
 // 每个用例自建产线/批次夹具并在结束后清理，可连续重复运行。
 // 默认连接 sterile_release_test 库，可用 TEST_DATABASE_URL 覆盖；
-// 数据库不可用时整组跳过，不影响纯单元测试。
+// 测试库不可用时按失败处理，不允许用跳过掩盖环境缺口。
 
 const pauseTestSecret = "pause-flow-test-secret-key-32chars!"
 
@@ -83,7 +83,7 @@ func pauseEnvFor(t *testing.T) *pauseTestEnv {
 	t.Helper()
 	pauseEnvOnce.Do(func() { pauseEnv, pauseEnvErr = buildPauseTestEnv() })
 	if pauseEnvErr != nil {
-		t.Skipf("暂停复核集成测试环境不可用: %v", pauseEnvErr)
+		t.Fatalf("暂停复核集成测试环境不可用，按失败处理: %v", pauseEnvErr)
 	}
 	return pauseEnv
 }
