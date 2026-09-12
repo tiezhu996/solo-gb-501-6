@@ -35,6 +35,7 @@ export const pauseRequestAPI = {
   get: (id: number) => unwrap<PauseRequest>(apiClient.get(`/pause-requests/${id}`)),
   create: (batchId: number, reason: string) => unwrap<PauseRequest>(apiClient.post(`/batches/${batchId}/pause-requests`, { reason })),
   review: (id: number, action: PauseReviewAction, comment: string) => unwrap<PauseRequest>(apiClient.post(`/pause-requests/${id}/review`, { action, comment })),
+  withdraw: (id: number) => unwrap<PauseRequest>(apiClient.post(`/pause-requests/${id}/withdraw`)),
 }
 
 export const inspectionAPI = {

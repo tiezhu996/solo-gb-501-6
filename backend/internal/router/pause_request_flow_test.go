@@ -455,6 +455,7 @@ func TestPauseRequestUnauthenticated(t *testing.T) {
 	for _, target := range []struct{ method, path string }{
 		{http.MethodPost, fmt.Sprintf("/api/batches/%d/pause-requests", fixture.batch.ID)},
 		{http.MethodPost, "/api/pause-requests/1/review"},
+		{http.MethodPost, "/api/pause-requests/1/withdraw"},
 		{http.MethodGet, "/api/pause-requests"},
 	} {
 		status, _ := env.call(t, target.method, target.path, "", map[string]any{"reason": "未登录访问", "action": "approve"})
@@ -498,5 +499,164 @@ func TestPauseRequestConcurrentDuplicate(t *testing.T) {
 	}
 	if count := env.pendingCount(t, fixture.batch.ID); count != 1 {
 		t.Fatalf("pending requests after concurrent apply = %d, want 1", count)
+	}
+}
+
+func TestPauseRequestWithdraw(t *testing.T) {
+	env := pauseEnvFor(t)
+	fixture := env.newFixture(t, constants.BatchStatusRunning)
+	requestID := env.applyPause(t, fixture.batch.ID, "误报的停机申请")
+
+	status, resp := env.call(t, http.MethodPost, fmt.Sprintf("/api/pause-requests/%d/withdraw", requestID), constants.RoleOperator, nil)
+	if status != http.StatusOK {
+		t.Fatalf("withdraw returned %d, want 200: %v", status, resp)
+	}
+	state := env.pauseRequestState(t, requestID)
+	if state["status"] != string(constants.PauseRequestWithdrawn) {
+		t.Fatalf("request status = %v, want withdrawn", state["status"])
+	}
+	if state["reviewerName"] != "产线操作员" {
+		t.Fatalf("withdrawer = %v, want 产线操作员", state["reviewerName"])
+	}
+	if state["reviewedAt"] == nil || state["reviewedAt"] == "" {
+		t.Fatal("reviewedAt must be set after withdraw")
+	}
+	if batchStatus, _ := env.batchStatus(t, fixture.batch.ID); batchStatus != string(constants.BatchStatusRunning) {
+		t.Fatalf("batch status after withdraw = %s, want running", batchStatus)
+	}
+
+	// 撤销后阻断解除，可以登记检验
+	status, resp = env.call(t, http.MethodPost, "/api/inspections", constants.RoleInspector, map[string]any{
+		"productionBatchId": fixture.batch.ID, "sampleCode": "S-PT" + fmt.Sprint(time.Now().UnixNano()),
+		"samplingPosition": "批次末段", "inspectionItem": "外观完整性", "acceptanceRange": "外观无可见缺陷",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("inspection after withdraw returned %d, want 201: %v", status, resp)
+	}
+
+	// 撤销不占用待处理名额，可以重新申请
+	secondID := env.applyPause(t, fixture.batch.ID, "重新评估后仍需停机")
+	if count := env.pendingCount(t, fixture.batch.ID); count != 1 {
+		t.Fatalf("pending requests after re-apply = %d, want 1", count)
+	}
+
+	// 已撤销的申请不能再次撤销
+	status, resp = env.call(t, http.MethodPost, fmt.Sprintf("/api/pause-requests/%d/withdraw", requestID), constants.RoleOperator, nil)
+	if status != http.StatusConflict {
+		t.Fatalf("re-withdraw returned %d, want 409: %v", status, resp)
+	}
+	if got := errorMessage(t, resp); got != "该暂停申请已处理，不能撤销" {
+		t.Fatalf("re-withdraw message = %q", got)
+	}
+
+	// 已审批的申请同样不能撤销
+	status, resp = env.call(t, http.MethodPost, fmt.Sprintf("/api/pause-requests/%d/review", secondID), constants.RoleApprover, map[string]any{"action": "approve", "comment": "同意停机"})
+	if status != http.StatusOK {
+		t.Fatalf("approve second request returned %d: %v", status, resp)
+	}
+	status, resp = env.call(t, http.MethodPost, fmt.Sprintf("/api/pause-requests/%d/withdraw", secondID), constants.RoleOperator, nil)
+	if status != http.StatusConflict {
+		t.Fatalf("withdraw approved request returned %d, want 409: %v", status, resp)
+	}
+
+	// 撤销动作写入审计
+	status, resp = env.call(t, http.MethodGet, "/api/audit-logs?entityType=PauseRequest&pageSize=100", constants.RoleAdmin, nil)
+	if status != http.StatusOK {
+		t.Fatalf("list audit logs returned %d", status)
+	}
+	found := false
+	for _, item := range dataObj(t, resp)["items"].([]any) {
+		entry := item.(map[string]any)
+		if uint(entry["entityId"].(float64)) == requestID && entry["action"] == "pause_request.withdrawn" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("audit log for withdrawn request %d not found", requestID)
+	}
+}
+
+func TestPauseRequestWithdrawForbidden(t *testing.T) {
+	env := pauseEnvFor(t)
+	fixture := env.newFixture(t, constants.BatchStatusRunning)
+	requestID := env.applyPause(t, fixture.batch.ID, "等待他人尝试撤销")
+
+	// 非申请人即使有 batch:write 也不能撤销
+	status, resp := env.call(t, http.MethodPost, fmt.Sprintf("/api/pause-requests/%d/withdraw", requestID), constants.RoleAdmin, nil)
+	if status != http.StatusForbidden {
+		t.Fatalf("withdraw as non-applicant admin returned %d, want 403: %v", status, resp)
+	}
+	if got := errorMessage(t, resp); got != "只有申请人本人可以撤销暂停申请" {
+		t.Fatalf("non-applicant message = %q", got)
+	}
+
+	// 没有 batch:write 的角色直接被 RBAC 拦截
+	for _, role := range []constants.Role{constants.RoleApprover, constants.RoleInspector} {
+		status, _ := env.call(t, http.MethodPost, fmt.Sprintf("/api/pause-requests/%d/withdraw", requestID), role, nil)
+		if status != http.StatusForbidden {
+			t.Fatalf("withdraw as %s returned %d, want 403", role, status)
+		}
+	}
+
+	if state := env.pauseRequestState(t, requestID); state["status"] != string(constants.PauseRequestPending) {
+		t.Fatalf("request status after forbidden withdraws = %v, want pending", state["status"])
+	}
+}
+
+func TestPauseRequestConcurrentWithdrawReview(t *testing.T) {
+	env := pauseEnvFor(t)
+	fixture := env.newFixture(t, constants.BatchStatusRunning)
+	requestID := env.applyPause(t, fixture.batch.ID, "并发撤销与审批")
+
+	type outcome struct {
+		name string
+		code int
+	}
+	results := make(chan outcome, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		status, _ := env.call(t, http.MethodPost, fmt.Sprintf("/api/pause-requests/%d/withdraw", requestID), constants.RoleOperator, nil)
+		results <- outcome{"withdraw", status}
+	}()
+	go func() {
+		defer wg.Done()
+		status, _ := env.call(t, http.MethodPost, fmt.Sprintf("/api/pause-requests/%d/review", requestID), constants.RoleApprover, map[string]any{"action": "approve"})
+		results <- outcome{"approve", status}
+	}()
+	wg.Wait()
+	close(results)
+
+	codes := map[string]int{}
+	for result := range results {
+		codes[result.name] = result.code
+	}
+	okCount := 0
+	for _, code := range codes {
+		if code == http.StatusOK {
+			okCount++
+		} else if code != http.StatusConflict {
+			t.Fatalf("unexpected status codes: %v", codes)
+		}
+	}
+	if okCount != 1 {
+		t.Fatalf("concurrent withdraw/review: exactly one must succeed, got %v", codes)
+	}
+
+	// 最终状态必须自洽：撤销则批次保持运行，同意则批次进入暂停
+	state := env.pauseRequestState(t, requestID)
+	batchStatus, _ := env.batchStatus(t, fixture.batch.ID)
+	switch state["status"] {
+	case string(constants.PauseRequestWithdrawn):
+		if codes["withdraw"] != http.StatusOK || batchStatus != string(constants.BatchStatusRunning) {
+			t.Fatalf("withdraw won but codes=%v batch=%s", codes, batchStatus)
+		}
+	case string(constants.PauseRequestApproved):
+		if codes["approve"] != http.StatusOK || batchStatus != string(constants.BatchStatusHold) {
+			t.Fatalf("approve won but codes=%v batch=%s", codes, batchStatus)
+		}
+	default:
+		t.Fatalf("request status = %v, want withdrawn or approved", state["status"])
 	}
 }

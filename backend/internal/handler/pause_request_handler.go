@@ -77,3 +77,16 @@ func (h *PauseRequestHandler) Review(c *gin.Context) {
 	}
 	util.Respond(c, http.StatusOK, request)
 }
+
+func (h *PauseRequestHandler) Withdraw(c *gin.Context) {
+	id, ok := util.ParseID(c)
+	if !ok {
+		return
+	}
+	request, err := h.service.Withdraw(c.Request.Context(), ActorFromContext(c), id)
+	if err != nil {
+		util.RespondError(c, err)
+		return
+	}
+	util.Respond(c, http.StatusOK, request)
+}

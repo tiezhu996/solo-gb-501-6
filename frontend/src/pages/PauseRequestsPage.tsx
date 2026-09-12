@@ -1,5 +1,5 @@
-import { CheckOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons'
-import { Alert, Button, Form, Input, Modal, Select, Space, Typography, message } from 'antd'
+import { CheckOutlined, CloseOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, Button, Form, Input, Modal, Popconfirm, Select, Space, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -15,7 +15,7 @@ import { formatDateTime } from '../utils/format'
 export function PauseRequestsPage() {
   const { data, loading, load } = usePauseRequestStore()
   const pagination = usePagination()
-  const { can } = useAuth()
+  const { can, user } = useAuth()
   const navigate = useNavigate()
   const [status, setStatus] = useState<PauseRequestStatus | undefined>()
   const [reviewTarget, setReviewTarget] = useState<{ request: PauseRequest; action: PauseReviewAction } | null>(null)
@@ -35,6 +35,14 @@ export function PauseRequestsPage() {
       await refresh()
     } finally { setSaving(false) }
   }
+  const withdraw = async (request: PauseRequest) => {
+    setSaving(true)
+    try {
+      await pauseRequestAPI.withdraw(request.id)
+      message.success('暂停申请已撤销，批次保持运行')
+      await refresh()
+    } finally { setSaving(false) }
+  }
   const columns: ColumnsType<PauseRequest> = [
     { title: '批次', render: (_, row) => <Button className="table-link" type="link" onClick={() => navigate(`/batches/${row.productionBatchId}`)}>{row.productionBatch?.batchNo || row.productionBatchId}</Button>, fixed: 'left' },
     { title: '申请原因', dataIndex: 'reason', ellipsis: true },
@@ -45,10 +53,19 @@ export function PauseRequestsPage() {
     { title: '审批结论', dataIndex: 'reviewComment', ellipsis: true, render: (value) => value || '-' },
     { title: '审批时间', dataIndex: 'reviewedAt', render: (value) => value ? formatDateTime(value) : '-' },
     {
-      title: '操作', fixed: 'right', render: (_, row) => row.status === 'pending' && can('release:write') && (
+      title: '操作', fixed: 'right', render: (_, row) => row.status === 'pending' && (
         <Space>
-          <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => setReviewTarget({ request: row, action: 'approve' })}>同意</Button>
-          <Button size="small" danger icon={<CloseOutlined />} onClick={() => setReviewTarget({ request: row, action: 'reject' })}>拒绝</Button>
+          {can('release:write') && (
+            <>
+              <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => setReviewTarget({ request: row, action: 'approve' })}>同意</Button>
+              <Button size="small" danger icon={<CloseOutlined />} onClick={() => setReviewTarget({ request: row, action: 'reject' })}>拒绝</Button>
+            </>
+          )}
+          {row.applicantId === user?.id && (
+            <Popconfirm title="撤销暂停申请" description="撤销后批次保持运行，确定撤销？" okText="确定" cancelText="取消" onConfirm={() => void withdraw(row)}>
+              <Button size="small" icon={<RollbackOutlined />} loading={saving}>撤销</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -56,7 +73,7 @@ export function PauseRequestsPage() {
   return (
     <div className="page-stack">
       <header className="page-header"><div><Typography.Title level={2}>暂停复核</Typography.Title><Typography.Text type="secondary">审批产线提交的批次暂停申请，同意后批次进入暂停，拒绝则保持运行</Typography.Text></div></header>
-      <div className="table-toolbar"><Select allowClear placeholder="全部状态" value={status} onChange={setStatus} options={[{ value: 'pending', label: '待审批' }, { value: 'approved', label: '已同意' }, { value: 'rejected', label: '已拒绝' }]} /><Button icon={<SearchOutlined />} onClick={() => void refresh()}>查询</Button></div>
+      <div className="table-toolbar"><Select allowClear placeholder="全部状态" value={status} onChange={setStatus} options={[{ value: 'pending', label: '待审批' }, { value: 'approved', label: '已同意' }, { value: 'rejected', label: '已拒绝' }, { value: 'withdrawn', label: '已撤销' }]} /><Button icon={<SearchOutlined />} onClick={() => void refresh()}>查询</Button></div>
       <EntityTable columns={columns} dataSource={data.items} loading={loading} emptyTitle="暂无暂停申请" pagination={{ current: pagination.page, pageSize: pagination.pageSize, total: data.total, onChange: pagination.update, showSizeChanger: true }} />
       <Modal
         title={reviewTarget?.action === 'approve' ? `同意暂停 · ${reviewTarget?.request.productionBatch?.batchNo || ''}` : `拒绝暂停 · ${reviewTarget?.request.productionBatch?.batchNo || ''}`}

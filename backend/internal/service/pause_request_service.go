@@ -17,6 +17,7 @@ type PauseRequestService interface {
 	Get(context.Context, uint) (*model.PauseRequest, error)
 	Create(context.Context, Actor, uint, string) (*model.PauseRequest, error)
 	Review(context.Context, Actor, uint, dto.ReviewPauseRequestRequest) (*model.PauseRequest, error)
+	Withdraw(context.Context, Actor, uint) (*model.PauseRequest, error)
 }
 
 type pauseRequestService struct {
@@ -141,6 +142,45 @@ func (s *pauseRequestService) Review(ctx context.Context, actor Actor, id uint, 
 			return err
 		}
 		return s.audit.Record(txCtx, actor, "pause_request.reviewed", "PauseRequest", request.ID, before, request)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.Find(ctx, request.ID)
+}
+
+// Withdraw lets the applicant cancel a still-pending request. The batch is
+// never touched, so it keeps running. The request row lock serializes a
+// concurrent review and withdraw: whichever commits first wins, the other
+// sees a non-pending status and fails with a conflict.
+func (s *pauseRequestService) Withdraw(ctx context.Context, actor Actor, id uint) (*model.PauseRequest, error) {
+	var request *model.PauseRequest
+	err := s.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		request, err = s.repo.FindForUpdate(txCtx, id)
+		if err != nil {
+			return err
+		}
+		if !request.Pending() {
+			return util.Conflict("该暂停申请已处理，不能撤销")
+		}
+		if request.ApplicantID != actor.ID {
+			return util.Forbidden("只有申请人本人可以撤销暂停申请")
+		}
+		before := *request
+		now := time.Now()
+		request.Status = constants.PauseRequestWithdrawn
+		request.ReviewerID = &actor.ID
+		request.ReviewerName = actor.Name
+		request.ReviewedAt = &now
+		request.Normalize()
+		if err := request.Validate(); err != nil {
+			return util.BadRequest(err.Error())
+		}
+		if err := s.repo.Save(txCtx, request); err != nil {
+			return err
+		}
+		return s.audit.Record(txCtx, actor, "pause_request.withdrawn", "PauseRequest", request.ID, before, request)
 	})
 	if err != nil {
 		return nil, err

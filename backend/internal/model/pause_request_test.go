@@ -48,6 +48,18 @@ func TestPauseRequestValidation(t *testing.T) {
 	if err := request.Validate(); err == nil {
 		t.Fatal("approved request without reviewer must fail")
 	}
+
+	request = validPauseRequest()
+	request.Status = constants.PauseRequestWithdrawn
+	if err := request.Validate(); err == nil {
+		t.Fatal("withdrawn request without withdrawer must fail")
+	}
+	request.ReviewerID = &reviewerID
+	request.ReviewerName = "产线操作员"
+	request.ReviewedAt = &now
+	if err := request.Validate(); err != nil {
+		t.Fatalf("withdrawn request with withdrawer should pass: %v", err)
+	}
 }
 
 func TestPauseReviewAction(t *testing.T) {
@@ -57,7 +69,7 @@ func TestPauseReviewAction(t *testing.T) {
 	if constants.PauseReviewAction("hold").Valid() {
 		t.Fatal("unknown review action must be invalid")
 	}
-	if !constants.PauseRequestPending.Valid() || !constants.PauseRequestApproved.Valid() || !constants.PauseRequestRejected.Valid() {
+	if !constants.PauseRequestPending.Valid() || !constants.PauseRequestApproved.Valid() || !constants.PauseRequestRejected.Valid() || !constants.PauseRequestWithdrawn.Valid() {
 		t.Fatal("all pause request statuses must be valid")
 	}
 	if constants.PauseRequestStatus("done").Valid() {

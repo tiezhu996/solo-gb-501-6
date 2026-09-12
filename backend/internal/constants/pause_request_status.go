@@ -3,14 +3,15 @@ package constants
 type PauseRequestStatus string
 
 const (
-	PauseRequestPending  PauseRequestStatus = "pending"
-	PauseRequestApproved PauseRequestStatus = "approved"
-	PauseRequestRejected PauseRequestStatus = "rejected"
+	PauseRequestPending   PauseRequestStatus = "pending"
+	PauseRequestApproved  PauseRequestStatus = "approved"
+	PauseRequestRejected  PauseRequestStatus = "rejected"
+	PauseRequestWithdrawn PauseRequestStatus = "withdrawn"
 )
 
 func (s PauseRequestStatus) Valid() bool {
 	switch s {
-	case PauseRequestPending, PauseRequestApproved, PauseRequestRejected:
+	case PauseRequestPending, PauseRequestApproved, PauseRequestRejected, PauseRequestWithdrawn:
 		return true
 	default:
 		return false

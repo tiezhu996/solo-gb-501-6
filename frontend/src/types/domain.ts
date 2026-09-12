@@ -1,6 +1,6 @@
 export type BatchStatus = 'draft' | 'running' | 'hold' | 'rework' | 'released'
 export type DecisionType = 'release' | 'quarantine' | 'rework'
-export type PauseRequestStatus = 'pending' | 'approved' | 'rejected'
+export type PauseRequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn'
 export type PauseReviewAction = 'approve' | 'reject'
 export type Role = 'admin' | 'inspector' | 'approver' | 'operator' | 'viewer'
 

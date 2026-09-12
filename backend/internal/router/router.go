@@ -89,6 +89,7 @@ func Build(db *gorm.DB, redisClient *redis.Client, cfg config.Config) (*gin.Engi
 	secured.GET("/pause-requests", pauseRequestHandler.List)
 	secured.GET("/pause-requests/:id", pauseRequestHandler.Get)
 	secured.POST("/pause-requests/:id/review", middleware.RequirePermission("release:write"), pauseRequestHandler.Review)
+	secured.POST("/pause-requests/:id/withdraw", middleware.RequirePermission("batch:write"), pauseRequestHandler.Withdraw)
 
 	secured.GET("/inspections", inspectionHandler.List)
 	secured.GET("/inspections/:id", inspectionHandler.Get)

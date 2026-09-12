@@ -5,6 +5,7 @@ const config: Record<PauseRequestStatus, { label: string; color: string }> = {
   pending: { label: '待审批', color: 'processing' },
   approved: { label: '已同意', color: 'success' },
   rejected: { label: '已拒绝', color: 'default' },
+  withdrawn: { label: '已撤销', color: 'warning' },
 }
 
 export function PauseRequestStatusBadge({ status }: { status: PauseRequestStatus }) {
