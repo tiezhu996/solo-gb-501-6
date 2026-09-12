@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -44,6 +45,7 @@ func Migrate(db *gorm.DB) error {
 		&model.ProductionBatch{},
 		&model.InspectionSample{},
 		&model.ReleaseDecision{},
+		&model.PauseRequest{},
 		&model.AuditLog{},
 	)
 }
@@ -223,5 +225,6 @@ func IsUniqueViolation(err error) bool {
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return true
 	}
-	return false
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

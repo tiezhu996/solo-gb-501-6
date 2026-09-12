@@ -9,6 +9,7 @@ import { BatchesPage } from '../pages/BatchesPage'
 import { InspectionsPage } from '../pages/InspectionsPage'
 import { LinesPage } from '../pages/LinesPage'
 import { LoginPage } from '../pages/LoginPage'
+import { PauseRequestsPage } from '../pages/PauseRequestsPage'
 import { ReleasePage } from '../pages/ReleasePage'
 
 function ProtectedRoute({ permission }: { permission?: string }) {
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
         { path: '/batches', element: <BatchesPage /> },
         { path: '/batches/:id', element: <BatchDetailPage /> },
         { path: '/inspections', element: <InspectionsPage /> },
+        { path: '/pause-requests', element: <PauseRequestsPage /> },
         { path: '/release', element: <ReleasePage /> },
         {
           element: <ProtectedRoute permission="audit:read" />,

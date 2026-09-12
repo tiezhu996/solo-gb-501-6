@@ -20,7 +20,7 @@ type BatchService interface {
 	Get(context.Context, uint) (*model.ProductionBatch, error)
 	Create(context.Context, Actor, dto.CreateBatchRequest) (*model.ProductionBatch, error)
 	Update(context.Context, Actor, uint, dto.UpdateBatchRequest) (*model.ProductionBatch, error)
-	Transition(context.Context, Actor, uint, constants.BatchStatus, string) (*model.ProductionBatch, error)
+	Transition(context.Context, Actor, uint, constants.BatchStatus) (*model.ProductionBatch, error)
 	Overview(context.Context) (*dto.QualityOverview, error)
 }
 
@@ -144,7 +144,7 @@ func (s *batchService) Update(ctx context.Context, actor Actor, id uint, input d
 	return s.repo.Find(ctx, batch.ID)
 }
 
-func (s *batchService) Transition(ctx context.Context, actor Actor, id uint, next constants.BatchStatus, reason string) (*model.ProductionBatch, error) {
+func (s *batchService) Transition(ctx context.Context, actor Actor, id uint, next constants.BatchStatus) (*model.ProductionBatch, error) {
 	var batch *model.ProductionBatch
 	err := s.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
 		var err error
@@ -155,19 +155,16 @@ func (s *batchService) Transition(ctx context.Context, actor Actor, id uint, nex
 		if next == constants.BatchStatusReleased {
 			return util.Forbidden("批次放行只能通过放行审批完成")
 		}
+		if next == constants.BatchStatusHold {
+			return util.Forbidden("暂停批次需提交暂停申请并由审批人员同意")
+		}
 		if err := constants.ValidateBatchTransition(batch.Status, next); err != nil {
 			return util.Conflict(err.Error())
-		}
-		if next == constants.BatchStatusHold && strings.TrimSpace(reason) == "" {
-			return util.BadRequest("暂停批次必须填写原因")
 		}
 		before := *batch
 		now := time.Now()
 		if next == constants.BatchStatusRunning && batch.StartedAt == nil {
 			batch.StartedAt = &now
-		}
-		if next == constants.BatchStatusHold {
-			batch.HoldReason = strings.TrimSpace(reason)
 		}
 		if next == constants.BatchStatusRunning {
 			batch.HoldReason = ""

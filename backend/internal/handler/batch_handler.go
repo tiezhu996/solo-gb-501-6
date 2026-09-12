@@ -93,7 +93,7 @@ func (h *BatchHandler) Transition(c *gin.Context) {
 	if !util.BindJSON(c, &input) {
 		return
 	}
-	batch, err := h.service.Transition(c.Request.Context(), ActorFromContext(c), id, constants.BatchStatus(input.Status), input.Reason)
+	batch, err := h.service.Transition(c.Request.Context(), ActorFromContext(c), id, constants.BatchStatus(input.Status))
 	if err != nil {
 		util.RespondError(c, err)
 		return

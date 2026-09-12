@@ -1,5 +1,7 @@
 export type BatchStatus = 'draft' | 'running' | 'hold' | 'rework' | 'released'
 export type DecisionType = 'release' | 'quarantine' | 'rework'
+export type PauseRequestStatus = 'pending' | 'approved' | 'rejected'
+export type PauseReviewAction = 'approve' | 'reject'
 export type Role = 'admin' | 'inspector' | 'approver' | 'operator' | 'viewer'
 
 export interface BaseEntity {
@@ -59,6 +61,19 @@ export interface ReleaseDecision extends BaseEntity {
   reason: string
   effectiveAt: string
   inspectionSummary: string
+}
+
+export interface PauseRequest extends BaseEntity {
+  productionBatchId: number
+  productionBatch?: ProductionBatch
+  reason: string
+  status: PauseRequestStatus
+  applicantId: number
+  applicantName: string
+  reviewerId?: number
+  reviewerName?: string
+  reviewComment?: string
+  reviewedAt?: string
 }
 
 export interface AuditLog {

@@ -1,4 +1,4 @@
-import { AuditOutlined, ExperimentOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ProductOutlined, SafetyCertificateOutlined, SettingOutlined } from '@ant-design/icons'
+import { AuditOutlined, ExperimentOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PauseCircleOutlined, ProductOutlined, SafetyCertificateOutlined, SettingOutlined } from '@ant-design/icons'
 import { Avatar, Button, Dropdown, Layout, Menu, Space, Typography } from 'antd'
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -10,6 +10,7 @@ const navigation = [
   { key: '/lines', icon: <SettingOutlined />, label: '产线总览', permission: undefined },
   { key: '/batches', icon: <ProductOutlined />, label: '批次队列', permission: undefined },
   { key: '/inspections', icon: <ExperimentOutlined />, label: '检验工作台', permission: undefined },
+  { key: '/pause-requests', icon: <PauseCircleOutlined />, label: '暂停复核', permission: undefined },
   { key: '/release', icon: <SafetyCertificateOutlined />, label: '放行审批', permission: undefined },
   { key: '/audit', icon: <AuditOutlined />, label: '审计记录', permission: 'audit:read' },
 ]

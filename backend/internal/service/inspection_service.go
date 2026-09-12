@@ -26,12 +26,13 @@ type InspectionService interface {
 type inspectionService struct {
 	repo      repository.InspectionRepository
 	batchRepo repository.BatchRepository
+	pauseRepo repository.PauseRequestRepository
 	audit     AuditService
 	tx        repository.Transactor
 }
 
-func NewInspectionService(repo repository.InspectionRepository, batchRepo repository.BatchRepository, audit AuditService, tx repository.Transactor) InspectionService {
-	return &inspectionService{repo: repo, batchRepo: batchRepo, audit: audit, tx: tx}
+func NewInspectionService(repo repository.InspectionRepository, batchRepo repository.BatchRepository, pauseRepo repository.PauseRequestRepository, audit AuditService, tx repository.Transactor) InspectionService {
+	return &inspectionService{repo: repo, batchRepo: batchRepo, pauseRepo: pauseRepo, audit: audit, tx: tx}
 }
 
 func (s *inspectionService) List(ctx context.Context, filter repository.InspectionFilter) (dto.PageResult[model.InspectionSample], error) {
@@ -60,6 +61,13 @@ func (s *inspectionService) Create(ctx context.Context, actor Actor, input dto.C
 		}
 		if batch.Status == constants.BatchStatusDraft || batch.Status == constants.BatchStatusReleased {
 			return util.Conflict("当前批次状态不允许新增检验样本")
+		}
+		pendingPause, err := s.pauseRepo.CountPendingForBatch(txCtx, batch.ID)
+		if err != nil {
+			return err
+		}
+		if pendingPause > 0 {
+			return util.Conflict("批次存在待处理的暂停申请，不能新增检验")
 		}
 		sample = &model.InspectionSample{
 			ProductionBatchID: input.ProductionBatchID, SampleCode: input.SampleCode,

@@ -23,12 +23,13 @@ type releaseService struct {
 	repo           repository.ReleaseRepository
 	batchRepo      repository.BatchRepository
 	inspectionRepo repository.InspectionRepository
+	pauseRepo      repository.PauseRequestRepository
 	audit          AuditService
 	tx             repository.Transactor
 }
 
-func NewReleaseService(repo repository.ReleaseRepository, batchRepo repository.BatchRepository, inspectionRepo repository.InspectionRepository, audit AuditService, tx repository.Transactor) ReleaseService {
-	return &releaseService{repo: repo, batchRepo: batchRepo, inspectionRepo: inspectionRepo, audit: audit, tx: tx}
+func NewReleaseService(repo repository.ReleaseRepository, batchRepo repository.BatchRepository, inspectionRepo repository.InspectionRepository, pauseRepo repository.PauseRequestRepository, audit AuditService, tx repository.Transactor) ReleaseService {
+	return &releaseService{repo: repo, batchRepo: batchRepo, inspectionRepo: inspectionRepo, pauseRepo: pauseRepo, audit: audit, tx: tx}
 }
 
 func (s *releaseService) List(ctx context.Context, query dto.PageQuery, decision string) (dto.PageResult[model.ReleaseDecision], error) {
@@ -56,6 +57,13 @@ func (s *releaseService) Decide(ctx context.Context, actor Actor, input dto.Crea
 		}
 		if batch.Status == constants.BatchStatusReleased {
 			return util.Conflict("批次已经放行")
+		}
+		pendingPause, err := s.pauseRepo.CountPendingForBatch(txCtx, batch.ID)
+		if err != nil {
+			return err
+		}
+		if pendingPause > 0 {
+			return util.Conflict("批次存在待处理的暂停申请，不能提交放行决定")
 		}
 		incomplete, err := s.inspectionRepo.CountIncomplete(txCtx, batch.ID)
 		if err != nil {

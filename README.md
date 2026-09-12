@@ -6,9 +6,10 @@
 
 1. 产线操作员在「产线总览」确认设备可用，在「批次队列」创建批次并开工。
 2. 检验员在「检验工作台」登记抽样位置和检验项目，录入合格/不合格结果；不合格结果自动进入待复测状态。
-3. 放行审批员在「放行审批」查看生产和检验依据，选择放行、隔离或返工。
-4. 放行要求至少一项检验、无待检验、无待复测且无不合格结果；隔离和返工会同步更新批次状态。
-5. 管理员在「审计记录」按操作者、实体或请求 ID 回溯操作。
+3. 运行中的批次需要停机时，操作员在「批次队列」提交暂停申请并填写原因；放行审批员在「暂停复核」同意后批次才进入暂停，拒绝则保持运行并记录结论。同一批次只允许一份待审批申请，审批期间不能新增检验或提交放行决定。
+4. 放行审批员在「放行审批」查看生产和检验依据，选择放行、隔离或返工。
+5. 放行要求至少一项检验、无待检验、无待复测且无不合格结果；隔离和返工会同步更新批次状态。
+6. 管理员在「审计记录」按操作者、实体或请求 ID 回溯操作。
 
 首次启动会幂等写入 3 条产线、4 个批次和 5 条检验样本，便于直接验证完整流程；已有业务数据时不会覆盖。
 
@@ -116,7 +117,10 @@ docker compose config --quiet
 | `GET /api/overview` | 产线、批次、检验与风险聚合 | 已登录 |
 | `GET/POST/PATCH /api/lines` | 产线查询、创建、更新 | `line:write` |
 | `GET/POST/PATCH /api/batches` | 批次查询、创建、更新 | `batch:write` |
-| `POST /api/batches/:id/transition` | 开工、暂停、恢复或进入返工 | `batch:write` |
+| `POST /api/batches/:id/transition` | 开工、恢复或进入返工（不再支持直接暂停） | `batch:write` |
+| `POST /api/batches/:id/pause-requests` | 提交批次暂停申请（填写原因） | `batch:write` |
+| `GET /api/pause-requests` | 查询暂停申请（按状态、批次过滤） | 已登录 |
+| `POST /api/pause-requests/:id/review` | 审批暂停申请：同意进入暂停，拒绝保持运行 | `release:write` |
 | `GET/POST /api/inspections` | 检验查询和登记 | `inspection:write` |
 | `POST /api/inspections/:id/complete` | 录入检验或复测结果 | `inspection:write` |
 | `GET/POST /api/release-decisions` | 查看和提交放行决定 | `release:write` |
@@ -157,6 +161,17 @@ curl -s http://localhost:19501/api/lines \
 - 前端 API：`frontend/src/api/index.ts`
 - 前端公共面板：`frontend/src/components/common/DecisionPanel.tsx`
 - 前端使用页面：`ReleasePage.tsx`、`BatchDetailPage.tsx`
+
+`PauseRequestStatus` 的值固定为 `pending`、`approved`、`rejected`：
+
+- 后端定义：`backend/internal/constants/pause_request_status.go`
+- 后端持久化：`backend/internal/model/pause_request.go`（`status = 'pending'` 上有批次级部分唯一索引，保证同一批次只有一份待审批申请）
+- 后端规则：`backend/internal/service/pause_request_service.go`
+- 待审批期间阻断：`backend/internal/service/inspection_service.go`、`backend/internal/service/release_service.go`
+- 前端类型：`frontend/src/types/domain.ts`
+- 前端 API：`frontend/src/api/index.ts`
+- 前端公共显示：`frontend/src/components/common/PauseRequestStatusBadge.tsx`
+- 前端使用页面：`PauseRequestsPage.tsx`、`BatchesPage.tsx`、`BatchDetailPage.tsx`
 
 修改枚举时必须同时更新以上位置、数据库兼容策略和 README，不应只修改某一层。
 

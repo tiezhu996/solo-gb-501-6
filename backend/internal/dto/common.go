@@ -30,7 +30,6 @@ type PageResult[T any] struct {
 
 type TransitionRequest struct {
 	Status string `json:"status" binding:"required"`
-	Reason string `json:"reason"`
 }
 
 type StatusCount struct {

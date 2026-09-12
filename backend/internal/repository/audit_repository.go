@@ -12,8 +12,8 @@ import (
 
 type AuditFilter struct {
 	dto.PageQuery
-	EntityType string
-	ActorID    uint
+	EntityType string `form:"entityType"`
+	ActorID    uint   `form:"actorId"`
 }
 
 type AuditRepository interface {

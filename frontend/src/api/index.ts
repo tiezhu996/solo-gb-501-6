@@ -1,7 +1,7 @@
 import { apiClient, unwrap } from './client'
 import type {
   AuditLog, BatchStatus, DecisionType, InspectionSample, PackagingLine,
-  PageResult, ProductionBatch, ReleaseDecision, User,
+  PageResult, PauseRequest, PauseRequestStatus, PauseReviewAction, ProductionBatch, ReleaseDecision, User,
 } from '../types/domain'
 
 export interface PageParams { page?: number; pageSize?: number; search?: string }
@@ -27,7 +27,14 @@ export const batchAPI = {
   create: (payload: Pick<ProductionBatch, 'batchNo' | 'specification' | 'responsibleTeam' | 'packagingLineId' | 'plannedQuantity' | 'producedQuantity'>) =>
     unwrap<ProductionBatch>(apiClient.post('/batches', payload)),
   update: (id: number, payload: Partial<ProductionBatch>) => unwrap<ProductionBatch>(apiClient.patch(`/batches/${id}`, payload)),
-  transition: (id: number, status: BatchStatus, reason = '') => unwrap<ProductionBatch>(apiClient.post(`/batches/${id}/transition`, { status, reason })),
+  transition: (id: number, status: BatchStatus) => unwrap<ProductionBatch>(apiClient.post(`/batches/${id}/transition`, { status })),
+}
+
+export const pauseRequestAPI = {
+  list: (params: PageParams & { status?: PauseRequestStatus; batchId?: number }) => unwrap<PageResult<PauseRequest>>(apiClient.get('/pause-requests', { params })),
+  get: (id: number) => unwrap<PauseRequest>(apiClient.get(`/pause-requests/${id}`)),
+  create: (batchId: number, reason: string) => unwrap<PauseRequest>(apiClient.post(`/batches/${batchId}/pause-requests`, { reason })),
+  review: (id: number, action: PauseReviewAction, comment: string) => unwrap<PauseRequest>(apiClient.post(`/pause-requests/${id}/review`, { action, comment })),
 }
 
 export const inspectionAPI = {

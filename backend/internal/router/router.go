@@ -24,14 +24,16 @@ func Build(db *gorm.DB, redisClient *redis.Client, cfg config.Config) (*gin.Engi
 	batchRepo := repository.NewBatchRepository(db)
 	inspectionRepo := repository.NewInspectionRepository(db)
 	releaseRepo := repository.NewReleaseRepository(db)
+	pauseRequestRepo := repository.NewPauseRequestRepository(db)
 	transactor := repository.NewTransactor(db)
 
 	auditService := service.NewAuditService(auditRepo)
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.TokenTTL)
 	lineService := service.NewLineService(lineRepo, auditService, transactor)
 	batchService := service.NewBatchService(batchRepo, lineRepo, auditService, transactor)
-	inspectionService := service.NewInspectionService(inspectionRepo, batchRepo, auditService, transactor)
-	releaseService := service.NewReleaseService(releaseRepo, batchRepo, inspectionRepo, auditService, transactor)
+	inspectionService := service.NewInspectionService(inspectionRepo, batchRepo, pauseRequestRepo, auditService, transactor)
+	releaseService := service.NewReleaseService(releaseRepo, batchRepo, inspectionRepo, pauseRequestRepo, auditService, transactor)
+	pauseRequestService := service.NewPauseRequestService(pauseRequestRepo, batchRepo, auditService, transactor)
 
 	if err := authService.Seed(context.Background()); err != nil {
 		return nil, err
@@ -42,6 +44,7 @@ func Build(db *gorm.DB, redisClient *redis.Client, cfg config.Config) (*gin.Engi
 	batchHandler := handler.NewBatchHandler(batchService)
 	inspectionHandler := handler.NewInspectionHandler(inspectionService)
 	releaseHandler := handler.NewReleaseHandler(releaseService)
+	pauseRequestHandler := handler.NewPauseRequestHandler(pauseRequestService)
 	auditHandler := handler.NewAuditHandler(auditService)
 
 	engine := gin.New()
@@ -81,6 +84,11 @@ func Build(db *gorm.DB, redisClient *redis.Client, cfg config.Config) (*gin.Engi
 	secured.POST("/batches", middleware.RequirePermission("batch:write"), batchHandler.Create)
 	secured.PATCH("/batches/:id", middleware.RequirePermission("batch:write"), batchHandler.Update)
 	secured.POST("/batches/:id/transition", middleware.RequirePermission("batch:write"), batchHandler.Transition)
+	secured.POST("/batches/:id/pause-requests", middleware.RequirePermission("batch:write"), pauseRequestHandler.Create)
+
+	secured.GET("/pause-requests", pauseRequestHandler.List)
+	secured.GET("/pause-requests/:id", pauseRequestHandler.Get)
+	secured.POST("/pause-requests/:id/review", middleware.RequirePermission("release:write"), pauseRequestHandler.Review)
 
 	secured.GET("/inspections", inspectionHandler.List)
 	secured.GET("/inspections/:id", inspectionHandler.Get)

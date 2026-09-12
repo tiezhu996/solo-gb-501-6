@@ -2,7 +2,7 @@ import { CheckOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { Button, Col, Form, Input, Modal, Radio, Row, Select, Space, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useEffect, useState } from 'react'
-import { batchAPI, inspectionAPI } from '../api'
+import { batchAPI, inspectionAPI, pauseRequestAPI } from '../api'
 import { BatchStatusBadge } from '../components/common/BatchStatusBadge'
 import { EntityTable } from '../components/common/EntityTable'
 import { StatusBadge } from '../components/common/StatusBadge'
@@ -26,7 +26,15 @@ export function InspectionsPage() {
   const [completeForm] = Form.useForm()
   const refresh = () => load({ page: pagination.page, pageSize: pagination.pageSize, search, result })
   useEffect(() => { void refresh() }, [pagination.page, pagination.pageSize, result])
-  useEffect(() => { void batchAPI.list({ page: 1, pageSize: 100 }).then((value) => setBatches(value.items.filter((batch) => ['running', 'hold', 'rework'].includes(batch.status)))) }, [])
+  useEffect(() => {
+    void Promise.all([
+      batchAPI.list({ page: 1, pageSize: 100 }),
+      pauseRequestAPI.list({ page: 1, pageSize: 100, status: 'pending' }),
+    ]).then(([batchPage, pausePage]) => {
+      const underReview = new Set(pausePage.items.map((item) => item.productionBatchId))
+      setBatches(batchPage.items.filter((batch) => ['running', 'hold', 'rework'].includes(batch.status) && !underReview.has(batch.id)))
+    })
+  }, [])
   const create = async () => {
     const values = await createForm.validateFields()
     setSaving(true)
